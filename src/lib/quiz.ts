@@ -1,9 +1,27 @@
 import Papa from 'papaparse';
 import type { QuizQuestion, Quiz, QuizMetadata } from './types.js';
 
-export async function loadQuizFromCSV(filename: string): Promise<Quiz> {
+// 퀴즈 캐시
+const quizCache = new Map<string, { quiz: Quiz; timestamp: number }>();
+const CACHE_DURATION = 10 * 60 * 1000; // 10분
+
+export async function loadQuizFromCSV(quizFolderName: string): Promise<Quiz> {
+	// 캐시 확인
+	const cached = quizCache.get(quizFolderName);
+	if (cached && (Date.now() - cached.timestamp) < CACHE_DURATION) {
+		return cached.quiz;
+	}
+
 	try {
-		const response = await fetch(`/quizzes/${filename}`);
+		// 새로운 폴더 구조: /quizzes/{folderName}/{folderName}.csv
+		const response = await fetch(`/quizzes/${quizFolderName}/${quizFolderName}.csv`, {
+			cache: 'force-cache' // 브라우저 캐시 활용
+		});
+		
+		if (!response.ok) {
+			throw new Error(`퀴즈 파일을 불러올 수 없습니다: ${response.status}`);
+		}
+		
 		const csvText = await response.text();
 		
 		const parseResult = Papa.parse<any>(csvText, {
@@ -21,20 +39,35 @@ export async function loadQuizFromCSV(filename: string): Promise<Quiz> {
 		}
 
 		// 첫 번째 행에서 제목과 학년 정보 추출
-		const title = rows[0][0] || filename.replace('.csv', '');
+		const title = rows[0][0] || quizFolderName.replace('_quiz', '').replace('_', ' ');
 		const grade = rows[0][1] || 'M1';
 
 		// 두 번째 행부터 문제와 정답 (첫 번째 행은 "문제,정답" 헤더)
-		const questions: QuizQuestion[] = rows.slice(2).map((row: any) => ({
-			question: row[0] || '',
-			answer: row[1] || ''
-		})).filter((q: QuizQuestion) => q.question && q.answer);
+		const questions: QuizQuestion[] = rows.slice(2).map((row: any) => {
+			const question: QuizQuestion = {
+				question: row[0] || '',
+				answer: row[1] || ''
+			};
+			
+			// 세 번째 열이 있으면 이미지 파일명으로 처리 (퀴즈 폴더 내 상대 경로)
+			if (row[2] && row[2].trim()) {
+				// 이미지 경로를 퀴즈 폴더 기준으로 설정
+				question.image = `${quizFolderName}/${row[2].trim()}`;
+			}
+			
+			return question;
+		}).filter((q: QuizQuestion) => q.question && q.answer);
 
-		return {
+		const quiz: Quiz = {
 			title,
 			grade,
 			questions
 		};
+		
+		// 캐시에 저장
+		quizCache.set(quizFolderName, { quiz, timestamp: Date.now() });
+		
+		return quiz;
 	} catch (error) {
 		console.error('퀴즈 로드 오류:', error);
 		throw new Error('퀴즈를 로드할 수 없습니다.');
@@ -43,32 +76,32 @@ export async function loadQuizFromCSV(filename: string): Promise<Quiz> {
 
 export async function getAvailableQuizzes(): Promise<QuizMetadata[]> {
 	try {
-		// 실제 배포 환경에서는 API 엔드포인트를 통해 가져와야 합니다
-		// 현재는 알려진 퀴즈 파일들을 반환
-		const knownQuizzes = [
-			'm1_sample_quiz.csv',
-			'm2_neurology_quiz.csv',
-			'm2_pathology_quiz.csv',
-			'm3_respiratory_quiz.csv',
-			'm4_clinical_quiz.csv'
+		// 새로운 폴더 구조: 각 퀴즈는 자체 폴더를 가짐
+		const knownQuizFolders = [
+			'm1_sample_quiz',
+			'm1_anatomy_quiz', 
+			'm2_neurology_quiz',
+			'm2_pathology_quiz',
+			'm3_respiratory_quiz',
+			'm4_clinical_quiz'
 		];
 		
-		// 실제로 존재하는 파일들만 필터링하고 메타데이터 로드
+		// 실제로 존재하는 퀴즈 폴더들만 필터링하고 메타데이터 로드
 		const availableQuizzes: QuizMetadata[] = [];
-		for (const filename of knownQuizzes) {
+		for (const folderName of knownQuizFolders) {
 			try {
-				const response = await fetch(`/quizzes/${filename}`, { method: 'HEAD' });
+				const response = await fetch(`/quizzes/${folderName}/${folderName}.csv`, { method: 'HEAD' });
 				if (response.ok) {
 					// CSV 파일에서 제목과 학년 정보 추출
-					const quiz = await loadQuizFromCSV(filename);
+					const quiz = await loadQuizFromCSV(folderName);
 					availableQuizzes.push({
-						filename,
+						filename: folderName,
 						title: quiz.title,
 						grade: quiz.grade
 					});
 				}
 			} catch (error) {
-				console.log(`퀴즈 파일 ${filename}를 찾을 수 없습니다.`);
+				console.log(`퀴즈 폴더 ${folderName}를 찾을 수 없습니다.`);
 			}
 		}
 		

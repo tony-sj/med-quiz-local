@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { loadQuizFromCSV, getAvailableQuizzes } from '$lib/quiz.js';
+	import { getFastQuizMetadata } from '$lib/quiz-cache.js';
 	import type { Quiz, QuizMode, QuizMetadata } from '$lib/types.js';
 
+	// 상태 변수들
 	let availableQuizzes: QuizMetadata[] = [];
 	let selectedQuiz = '';
 	let quizMode: QuizMode = 'complete';
@@ -11,7 +13,10 @@
 	let selectedGradeFilter = 'all';
 	let showSettingsModal = false;
 	let isModalClosing = false;
+	let timeLimit: number | undefined = undefined;
+	let enableImages = true;
 
+	// 최적화: 학년 옵션은 상수로 정의
 	const gradeOptions = [
 		{ value: 'all', label: '전체' },
 		{ value: 'M1', label: 'M1' },
@@ -20,13 +25,30 @@
 		{ value: 'M4', label: 'M4' },
 		{ value: 'M5', label: 'M5' },
 		{ value: 'M6', label: 'M6' }
-	];
+	] as const;
+
+	// 최적화: 메모화된 필터링된 퀴즈 목록
+	$: filteredQuizzes = selectedGradeFilter === 'all' 
+		? availableQuizzes 
+		: availableQuizzes.filter(quiz => quiz.grade === selectedGradeFilter);
+
+	// 최적화: 선택된 퀴즈 정보 메모화
+	$: selectedQuizInfo = selectedQuiz 
+		? availableQuizzes.find(quiz => quiz.filename === selectedQuiz)
+		: null;
 
 	onMount(async () => {
 		try {
-			availableQuizzes = await getAvailableQuizzes();
+			// 빠른 초기 로딩 (정적 메타데이터 즉시 표시)
+			availableQuizzes = await getFastQuizMetadata();
 		} catch (error) {
 			console.error('퀴즈 목록 로드 실패:', error);
+			// 폴백으로 기존 방식 시도
+			try {
+				availableQuizzes = await getAvailableQuizzes();
+			} catch (fallbackError) {
+				console.error('폴백 로딩도 실패:', fallbackError);
+			}
 		}
 	});
 
@@ -53,7 +75,9 @@
 			const params = new URLSearchParams({
 				file: selectedQuiz,
 				mode: quizMode,
-				shuffle: shuffleQuestions.toString()
+				shuffle: shuffleQuestions.toString(),
+				timeLimit: timeLimit?.toString() || '',
+				enableImages: enableImages.toString()
 			});
 			window.location.href = `/quiz?${params.toString()}`;
 		} catch (error) {
@@ -65,9 +89,6 @@
 		}
 	}
 
-	$: filteredQuizzes = selectedGradeFilter === 'all' 
-		? availableQuizzes 
-		: availableQuizzes.filter(quiz => quiz.grade === selectedGradeFilter);
 </script>
 
 <div class="card">
@@ -89,7 +110,7 @@
 		</div>
 
 		<div class="quiz-grid">
-			{#each filteredQuizzes as quiz}
+			{#each filteredQuizzes as quiz (quiz.filename)}
 				<button 
 					class="quiz-card"
 					onclick={() => selectQuiz(quiz.filename)}
@@ -133,14 +154,12 @@
 			
 			<div class="modal-content">
 				<div class="selected-quiz-info">
-					{#each availableQuizzes as quiz}
-						{#if quiz.filename === selectedQuiz}
-							<div class="quiz-info-card">
-								<div class="quiz-grade-badge">{quiz.grade}</div>
-								<div class="quiz-title-large">{quiz.title}</div>
-							</div>
-						{/if}
-					{/each}
+					{#if selectedQuizInfo}
+						<div class="quiz-info-card">
+							<div class="quiz-grade-badge">{selectedQuizInfo.grade}</div>
+							<div class="quiz-title-large">{selectedQuizInfo.title}</div>
+						</div>
+					{/if}
 				</div>
 
 				<div class="settings-section">
@@ -161,10 +180,66 @@
 
 				<div class="settings-section">
 					<h3>기타 설정</h3>
-					<label class="checkbox-item">
-						<input type="checkbox" bind:checked={shuffleQuestions} />
-						<span class="checkbox-label">문제 순서 섞기</span>
-					</label>
+					<div class="settings-grid">
+						<label class="checkbox-item">
+							<input type="checkbox" bind:checked={shuffleQuestions} />
+							<span class="checkbox-label">문제 순서 섞기</span>
+						</label>
+						
+						<label class="checkbox-item">
+							<input type="checkbox" bind:checked={enableImages} />
+							<span class="checkbox-label">이미지 표시</span>
+						</label>
+					</div>
+				</div>
+
+				<div class="settings-section">
+					<h3>시간 제한</h3>
+					<div class="timer-settings">
+						<label class="radio-item timer-option">
+							<input 
+								type="radio" 
+								name="timerOption"
+								checked={timeLimit === undefined}
+								onchange={() => timeLimit = undefined}
+							/>
+							<span class="radio-label">무제한</span>
+							<span class="radio-description">시간 제한 없이 풀기</span>
+						</label>
+						
+						<label class="radio-item timer-option">
+							<input 
+								type="radio" 
+								name="timerOption"
+								checked={timeLimit === 30}
+								onchange={() => timeLimit = 30}
+							/>
+							<span class="radio-label">30초</span>
+							<span class="radio-description">문제당 30초 제한</span>
+						</label>
+						
+						<label class="radio-item timer-option">
+							<input 
+								type="radio" 
+								name="timerOption"
+								checked={timeLimit === 60}
+								onchange={() => timeLimit = 60}
+							/>
+							<span class="radio-label">1분</span>
+							<span class="radio-description">문제당 1분 제한</span>
+						</label>
+						
+						<label class="radio-item timer-option">
+							<input 
+								type="radio" 
+								name="timerOption"
+								checked={timeLimit === 120}
+								onchange={() => timeLimit = 120}
+							/>
+							<span class="radio-label">2분</span>
+							<span class="radio-description">문제당 2분 제한</span>
+						</label>
+					</div>
 				</div>
 			</div>
 			
@@ -370,6 +445,32 @@
 	.checkbox-label {
 		font-weight: 500;
 		color: #333;
+	}
+
+	.settings-grid {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 1rem;
+	}
+
+	.timer-settings {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 0.75rem;
+	}
+
+	.timer-option {
+		padding: 0.75rem;
+		font-size: 0.9rem;
+	}
+
+	.timer-option .radio-label {
+		font-size: 0.95rem;
+	}
+
+	.timer-option .radio-description {
+		font-size: 0.8rem;
+		margin-top: 0.1rem;
 	}
 
 	/* 모달 스타일 */

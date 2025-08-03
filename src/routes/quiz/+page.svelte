@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
 	import { loadQuizFromCSV, shuffleArray, calculateScore } from '$lib/quiz.js';
+	import LazyImage from '$lib/components/LazyImage.svelte';
 	import type { Quiz, QuizResult, QuizMode } from '$lib/types.js';
 
 	let quiz: Quiz | null = null;
@@ -15,11 +16,27 @@
 	let shuffleQuestions = true;
 	let showFeedback = false;
 	let currentFeedback: { isCorrect: boolean; correctAnswer: string } | null = null;
+	
+	// 타이머 관련 변수
+	let timeLimit: number | undefined;
+	let timeRemaining = 0;
+	let timerInterval: ReturnType<typeof setInterval> | undefined;
+	let questionStartTime = 0;
+	let enableImages = true;
 
 	onMount(async () => {
 		const filename = $page.url.searchParams.get('file');
 		quizMode = ($page.url.searchParams.get('mode') as QuizMode) || 'complete';
 		shuffleQuestions = $page.url.searchParams.get('shuffle') !== 'false';
+		
+		// 타이머 설정 파싱
+		const timeLimitParam = $page.url.searchParams.get('timeLimit');
+		if (timeLimitParam && timeLimitParam !== 'undefined') {
+			timeLimit = parseInt(timeLimitParam);
+		}
+		
+		// 이미지 설정 파싱
+		enableImages = $page.url.searchParams.get('enableImages') !== 'false';
 		
 		if (!filename) {
 			window.location.href = '/';
@@ -33,6 +50,9 @@
 			}
 			userAnswers = new Array(quiz.questions.length).fill('');
 			isLoading = false;
+			
+			// 퀴즈 로드 완료 후 타이머 시작
+			startQuestionTimer();
 		} catch (error) {
 			console.error('퀴즈 로드 실패:', error);
 			alert('퀴즈를 로드할 수 없습니다.');
@@ -69,6 +89,10 @@
 		if (currentQuestionIndex < quiz.questions.length - 1) {
 			currentQuestionIndex++;
 			userAnswer = userAnswers[currentQuestionIndex] || '';
+			
+			// 타이머 재시작
+			clearTimer();
+			startQuestionTimer();
 		} else {
 			completeQuiz();
 		}
@@ -81,6 +105,10 @@
 			userAnswer = userAnswers[currentQuestionIndex] || '';
 			showFeedback = false;
 			currentFeedback = null;
+			
+			// 타이머 재시작
+			clearTimer();
+			startQuestionTimer();
 		}
 	}
 
@@ -123,16 +151,68 @@
 		quizResult = null;
 		showFeedback = false;
 		currentFeedback = null;
+		
+		// 타이머 초기화
+		clearTimer();
+		startQuestionTimer();
+		
 		if (shuffleQuestions) {
 			quiz.questions = shuffleArray(quiz.questions);
 		}
 	}
 
 	function goHome() {
+		clearTimer();
 		window.location.href = '/';
+	}
+	
+	// 타이머 관련 함수들
+	function startQuestionTimer() {
+		if (!timeLimit) return;
+		
+		timeRemaining = timeLimit;
+		questionStartTime = Date.now();
+		
+		timerInterval = setInterval(() => {
+			timeRemaining--;
+			if (timeRemaining <= 0) {
+				clearTimer();
+				handleTimeUp();
+			}
+		}, 1000);
+	}
+	
+	function clearTimer() {
+		if (timerInterval) {
+			clearInterval(timerInterval);
+			timerInterval = undefined;
+		}
+	}
+	
+	function handleTimeUp() {
+		// 시간 초과 시 자동으로 다음 문제로 이동
+		if (quizMode === 'immediate') {
+			checkAnswer();
+		} else {
+			nextQuestion();
+		}
+	}
+	
+	// 문제 변경 시 타이머 재시작
+	function moveToQuestion(index: number) {
+		currentQuestionIndex = index;
+		userAnswer = userAnswers[currentQuestionIndex] || '';
+		showFeedback = false;
+		currentFeedback = null;
+		
+		clearTimer();
+		startQuestionTimer();
 	}
 
 	$: progress = quiz ? ((currentQuestionIndex + 1) / quiz.questions.length) * 100 : 0;
+	$: timerProgress = timeLimit ? (timeRemaining / timeLimit) * 100 : 100;
+	$: formattedTime = `${Math.floor(timeRemaining / 60)}:${(timeRemaining % 60).toString().padStart(2, '0')}`;
+	$: isTimeRunningOut = timeLimit && timeRemaining <= 10;
 </script>
 
 {#if isLoading}
@@ -189,6 +269,12 @@
 			<h2>{quiz.title}</h2>
 			<div class="progress-info">
 				<span>문제 {currentQuestionIndex + 1} / {quiz.questions.length}</span>
+				{#if timeLimit}
+					<div class="timer {isTimeRunningOut ? 'warning' : ''}">
+						<span class="timer-icon">⏱️</span>
+						<span class="timer-text">{formattedTime}</span>
+					</div>
+				{/if}
 			</div>
 		</div>
 		
@@ -196,9 +282,27 @@
 			<div class="progress-fill" style="width: {progress}%"></div>
 		</div>
 		
+		{#if timeLimit}
+			<div class="timer-bar">
+				<div class="timer-fill {isTimeRunningOut ? 'warning' : ''}" 
+					 style="width: {timerProgress}%"></div>
+			</div>
+		{/if}
+		
 		<div class="question-section">
 			<div class="question">
 				<h3>{quiz.questions[currentQuestionIndex].question}</h3>
+				
+				{#if enableImages && quiz.questions[currentQuestionIndex].image}
+					<div class="question-image">
+						<LazyImage 
+							src="/quizzes/{quiz.questions[currentQuestionIndex].image}"
+							alt="문제 관련 이미지"
+							className="quiz-image"
+							placeholder="이미지 로딩 중..."
+						/>
+					</div>
+				{/if}
 			</div>
 			
 			<div class="answer-section">
@@ -277,6 +381,56 @@
 	.progress-info {
 		color: #666;
 		font-weight: 500;
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 1rem;
+	}
+	
+	.timer {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.5rem 1rem;
+		background: #f8f9fa;
+		border-radius: 20px;
+		font-weight: 600;
+		transition: all 0.3s ease;
+	}
+	
+	.timer.warning {
+		background: #fee;
+		color: #dc3545;
+		animation: pulse-warning 1s infinite;
+	}
+	
+	.timer-icon {
+		font-size: 1.1em;
+	}
+	
+	.timer-bar {
+		height: 4px;
+		background: #e9ecef;
+		border-radius: 2px;
+		overflow: hidden;
+		margin-top: 0.5rem;
+	}
+	
+	.timer-fill {
+		height: 100%;
+		background: linear-gradient(90deg, #28a745, #20c997);
+		transition: width 1s linear;
+		border-radius: 2px;
+	}
+	
+	.timer-fill.warning {
+		background: linear-gradient(90deg, #dc3545, #ff6b6b);
+	}
+	
+	@keyframes pulse-warning {
+		0%, 100% { transform: scale(1); }
+		50% { transform: scale(1.05); }
 	}
 	
 	.question-section {
@@ -455,5 +609,19 @@
 		justify-content: center;
 		gap: 1rem;
 		margin-top: 2rem;
+	}
+	
+	.question-image {
+		margin: 1.5rem 0;
+		border-radius: 8px;
+		overflow: hidden;
+		box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+	}
+	
+	:global(.quiz-image) {
+		width: 100%;
+		max-width: 500px;
+		height: auto;
+		border-radius: 8px;
 	}
 </style>

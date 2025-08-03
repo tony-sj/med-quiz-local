@@ -58,18 +58,18 @@
 	}
 </script>
 
-<div class="lazy-image-container {className}" bind:this={img}>
-	{#if loaded}
-		<img {src} {alt} class="lazy-image loaded" loading="lazy" />
-	{:else if error}
-		<div class="lazy-image-error">
-			<span>이미지를 불러올 수 없습니다</span>
-		</div>
-	{:else}
-		<div class="lazy-image-placeholder">
-			<span>{placeholder}</span>
-		</div>
-	{/if}
+<div class="lazy-image-container {className}">
+   {#if loaded}
+	   <img bind:this={img} {src} {alt} class="lazy-image loaded" loading="lazy" />
+   {:else if error}
+	   <div class="lazy-image-error">
+		   <span>이미지를 불러올 수 없습니다</span>
+	   </div>
+   {:else}
+	   <div class="lazy-image-placeholder">
+		   <span>{placeholder}</span>
+	   </div>
+   {/if}
 </div>
 
 <style>

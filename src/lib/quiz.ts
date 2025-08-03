@@ -5,9 +5,10 @@ import type { QuizQuestion, Quiz, QuizMetadata } from './types.js';
 const quizCache = new Map<string, { quiz: Quiz; timestamp: number }>();
 const CACHE_DURATION = 10 * 60 * 1000; // 10분
 
-export async function loadQuizFromCSV(quizFolderName: string): Promise<Quiz> {
-	// 캐시 확인
-	const cached = quizCache.get(quizFolderName);
+export async function loadQuizFromCSV(quizFolderName: string, enableImages: boolean = true): Promise<Quiz> {
+	// 캐시 키에 이미지 설정 포함
+	const cacheKey = `${quizFolderName}_images_${enableImages}`;
+	const cached = quizCache.get(cacheKey);
 	if (cached && (Date.now() - cached.timestamp) < CACHE_DURATION) {
 		return cached.quiz;
 	}
@@ -56,7 +57,15 @@ export async function loadQuizFromCSV(quizFolderName: string): Promise<Quiz> {
 			}
 			
 			return question;
-		}).filter((q: QuizQuestion) => q.question && q.answer);
+		}).filter((q: QuizQuestion) => {
+			// 기본 필터링: 질문과 답변이 있는지 확인
+			if (!q.question || !q.answer) return false;
+			
+			// 이미지 설정에 따른 필터링
+			if (!enableImages && q.image) return false;
+			
+			return true;
+		});
 
 		const quiz: Quiz = {
 			title,
@@ -65,7 +74,7 @@ export async function loadQuizFromCSV(quizFolderName: string): Promise<Quiz> {
 		};
 		
 		// 캐시에 저장
-		quizCache.set(quizFolderName, { quiz, timestamp: Date.now() });
+		quizCache.set(cacheKey, { quiz, timestamp: Date.now() });
 		
 		return quiz;
 	} catch (error) {

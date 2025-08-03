@@ -44,7 +44,7 @@
 		}
 
 		try {
-			quiz = await loadQuizFromCSV(filename);
+			quiz = await loadQuizFromCSV(filename, enableImages);
 			if (shuffleQuestions) {
 				quiz.questions = shuffleArray(quiz.questions);
 			}

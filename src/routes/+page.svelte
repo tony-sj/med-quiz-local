@@ -111,8 +111,21 @@
 
 <!-- 설정 모달 -->
 {#if showSettingsModal}
-	<div class="modal-overlay {isModalClosing ? 'closing' : ''}" onclick={closeModal}>
-		<div class="modal {isModalClosing ? 'closing' : ''}" onclick={(e) => e.stopPropagation()}>
+	<div 
+		class="modal-overlay {isModalClosing ? 'closing' : ''}" 
+		role="button"
+		tabindex="0"
+		onclick={closeModal}
+		onkeydown={(e) => e.key === 'Escape' && closeModal()}
+	>
+		<div 
+			class="modal {isModalClosing ? 'closing' : ''}" 
+			role="dialog"
+			aria-modal="true"
+			tabindex="0"
+			onclick={(e) => e.stopPropagation()}
+			onkeydown={(e) => e.stopPropagation()}
+		>
 			<div class="modal-header">
 				<h2>퀴즈 설정</h2>
 				<button class="close-btn" onclick={closeModal}>&times;</button>
@@ -171,6 +184,8 @@
 	</div>
 {/if}
 
+<!--
+
 <div class="card">
 	<h2>사용 방법</h2>
 	<ol>
@@ -188,6 +203,8 @@
 		<li>"퀴즈 시작하기" 버튼을 클릭하여 시작하세요</li>
 	</ol>
 </div>
+
+-->
 
 <style>
 	h2 {
@@ -212,21 +229,6 @@
 		text-align: center;
 		padding: 2rem;
 		color: #666;
-	}
-
-	.loading-spinner {
-		width: 40px;
-		height: 40px;
-		border: 3px solid #f3f3f3;
-		border-top: 3px solid #667eea;
-		border-radius: 50%;
-		animation: spin 1s linear infinite;
-		margin: 0 auto 1rem auto;
-	}
-
-	@keyframes spin {
-		0% { transform: rotate(0deg); }
-		100% { transform: rotate(360deg); }
 	}
 
 	.grade-filter {
@@ -368,10 +370,6 @@
 	.checkbox-label {
 		font-weight: 500;
 		color: #333;
-	}
-	
-	.actions {
-		text-align: center;
 	}
 
 	/* 모달 스타일 */
@@ -539,15 +537,6 @@
 		font-weight: 500;
 		cursor: pointer;
 		transition: all 0.3s ease;
-	}	.btn-primary:hover:not(:disabled) {
-		transform: translateY(-2px);
-		box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-	}
-	
-	.btn-primary:disabled {
-		opacity: 0.6;
-		cursor: not-allowed;
-		transform: none;
 	}
 	
 	.btn-primary:hover:not(:disabled) {
@@ -559,31 +548,5 @@
 		opacity: 0.6;
 		cursor: not-allowed;
 		transform: none;
-	}
-	
-	ol {
-		padding-left: 1.5rem;
-	}
-	
-	ol li {
-		margin-bottom: 0.5rem;
-		line-height: 1.6;
-	}
-
-	ul {
-		margin: 0.5rem 0;
-		padding-left: 1.5rem;
-	}
-
-	ul li {
-		margin-bottom: 0.25rem;
-	}
-	
-	code {
-		background: #f8f9fa;
-		padding: 0.2rem 0.4rem;
-		border-radius: 4px;
-		font-family: 'Monaco', 'Menlo', monospace;
-		font-size: 0.9rem;
 	}
 </style>
